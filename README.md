@@ -1,6 +1,33 @@
 # tmux-idle-notification
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/s2atoru/claude-tmux-idle-notification-hook.svg)](https://github.com/s2atoru/claude-tmux-idle-notification-hook/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/s2atoru/claude-tmux-idle-notification-hook.svg)](https://github.com/s2atoru/claude-tmux-idle-notification-hook/network)
+[![GitHub issues](https://img.shields.io/github/issues/s2atoru/claude-tmux-idle-notification-hook.svg)](https://github.com/s2atoru/claude-tmux-idle-notification-hook/issues)
+
 iTerm2とtmuxでアイドル状態を検出し、macOS通知を送信するシステムです。
+
+![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
+![Shell](https://img.shields.io/badge/shell-bash-green.svg)
+![iTerm2](https://img.shields.io/badge/iTerm2-required-blue.svg)
+
+## 目次
+
+- [概要](#概要)
+- [機能](#機能)
+- [ファイル構成](#ファイル構成)
+- [クイックスタート](#クイックスタート)
+- [セットアップ](#セットアップ)
+- [使い方](#使い方)
+- [スクリプト詳細](#スクリプト詳細)
+- [通知の仕組み](#通知の仕組み)
+- [トラブルシューティング](#トラブルシューティング)
+- [カスタマイズ](#カスタマイズ)
+- [今後の改善案](#今後の改善案)
+- [貢献](#貢献)
+- [ライセンス](#ライセンス)
+- [作者](#作者)
+- [参考資料](#参考資料)
 
 ## 概要
 
@@ -10,6 +37,51 @@ iTerm2とtmuxでアイドル状態を検出し、macOS通知を送信するシ�
 2. **Claude Code完了通知** - Claude Codeがタスクを完了したときに通知
 
 どちらもiTerm2の`TMUX_IDLE_NOTIFICATION:`プレフィックスを使用して、macOS通知センターに通知を表示します。
+
+### 動作イメージ
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    tmux + iTerm2                            │
+│                                                             │
+│  ┌──────────────────┐                                      │
+│  │  tmux session    │                                      │
+│  │  (idle 60s+)     │                                      │
+│  └────────┬─────────┘                                      │
+│           │                                                 │
+│           ▼                                                 │
+│  ┌──────────────────┐       ┌──────────────────┐          │
+│  │ tmux-idle-check  │──────▶│ TMUX_IDLE_       │          │
+│  │     .sh          │       │ NOTIFICATION:    │          │
+│  └──────────────────┘       └────────┬─────────┘          │
+│                                       │                     │
+│           Claude Code                 │                     │
+│  ┌──────────────────┐                │                     │
+│  │  Task completed  │                │                     │
+│  │  (idle 60s+)     │                │                     │
+│  └────────┬─────────┘                │                     │
+│           │                           │                     │
+│           ▼                           │                     │
+│  ┌──────────────────┐                │                     │
+│  │claude-complete-  │────────────────┘                     │
+│  │   notify.sh      │                                      │
+│  └──────────────────┘                                      │
+│                                                             │
+│                           │                                 │
+│                           ▼                                 │
+│                  ┌─────────────────┐                       │
+│                  │  iTerm2 detects │                       │
+│                  │  prefix pattern │                       │
+│                  └────────┬────────┘                       │
+└───────────────────────────┼─────────────────────────────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │  macOS           │
+                   │  Notification    │
+                   │  Center          │
+                   └─────────────────┘
+```
 
 ## 機能
 
@@ -40,6 +112,30 @@ tmux-idle-notification/
 ~/.claude/
 └── settings.json                       # Claude Code設定ファイル
 ```
+
+## クイックスタート
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/s2atoru/claude-tmux-idle-notification-hook.git
+cd claude-tmux-idle-notification-hook
+
+# スクリプトをインストール
+mkdir -p ~/.local/bin
+cp tmux-idle-check.sh tmux-idle-check-launcher.sh claude-complete-notify.sh ~/.local/bin/
+chmod +x ~/.local/bin/{tmux-idle-check.sh,tmux-idle-check-launcher.sh,claude-complete-notify.sh}
+
+# Claude Code設定をマージ
+cat claude-settings-example.json >> ~/.claude/settings.json
+
+# tmux設定に追加（オプション）
+echo "set-hook -g after-new-session 'run-shell \"~/.local/bin/tmux-idle-check-launcher.sh\"'" >> ~/.tmux.conf
+
+# tmux設定をリロード
+tmux source-file ~/.tmux.conf
+```
+
+完了！tmuxセッションでアイドル状態になると通知が届きます。
 
 ## セットアップ
 
@@ -297,10 +393,28 @@ sleep 10
 
 現在の`claude-complete-notify.sh`はtmux環境でのみ動作します。以下の環境にも対応する改善案があります：
 
-1. **iTerm2のみ（tmuxなし）**: エスケープシーケンス`\e]9;メッセージ\a`を使用
-2. **その他の環境**: `osascript`でmacOS通知を直接送信
+| 環境 | 現状 | 改善案 |
+|------|------|--------|
+| tmux + iTerm2 | ✅ 動作中 | `TMUX_IDLE_NOTIFICATION:` |
+| iTerm2のみ | ❌ 未対応 | エスケープシーケンス `\e]9;メッセージ\a` |
+| その他 | ❌ 未対応 | `osascript` で直接通知 |
 
-詳細は`~/.claude/plans/starry-enchanting-creek.md`を参照してください。
+> 💡 **計画ドキュメント**: 詳細な実装計画は [Plans](/.claude/plans/) を参照してください。
+
+## 貢献
+
+貢献を歓迎します！以下の方法で参加できます：
+
+1. 🐛 **バグ報告**: [Issues](https://github.com/s2atoru/claude-tmux-idle-notification-hook/issues) で報告
+2. 💡 **機能リクエスト**: [Issues](https://github.com/s2atoru/claude-tmux-idle-notification-hook/issues) で提案
+3. 🔧 **プルリクエスト**: 改善を直接提出
+4. ⭐ **スター**: プロジェクトが役立ったらスターをお願いします
+
+### 開発ガイドライン
+
+- コードスタイル: ShellCheck準拠
+- コミットメッセージ: [Conventional Commits](https://www.conventionalcommits.org/)形式
+- テスト: 変更前後でスクリプトをテスト実行
 
 ## ライセンス
 
@@ -309,6 +423,8 @@ MIT License
 ## 作者
 
 sugimoto
+
+[@s2atoru](https://github.com/s2atoru)
 
 ## 参考資料
 
