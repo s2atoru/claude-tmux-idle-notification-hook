@@ -190,12 +190,41 @@ cp claude-complete-notify.sh ~/.local/bin/
 }
 ```
 
-### iTerm2設定の確認
+### iTerm2設定
 
-iTerm2で通知機能が有効になっていることを確認：
+このシステムはiTerm2のTrigger機能を使用してmacOS通知を表示します。以下の手順で設定してください。
 
-1. iTerm2 > Preferences > Profiles > Terminal
-2. "Notifications" セクションで通知設定を確認
+#### 1. Triggerの設定
+
+1. iTerm2を開く
+2. **iTerm2 > Settings > Profiles** を開く
+3. 使用しているプロファイルを選択
+4. **Advanced** タブをクリック
+5. **Triggers** セクションの **Edit** ボタンをクリック
+6. 左下の **+** ボタンで新しいTriggerを追加
+7. 以下のように設定：
+
+| 項目 | 設定値 |
+|------|--------|
+| Regular Expression | `^TMUX_IDLE_NOTIFICATION:` |
+| Name | `tmux idle notification` |
+| Action | `Post Notification...` |
+| Parameters | `tmux has been idle` (または任意のメッセージ) |
+| Instant | ✅ チェック |
+| Enabled | ✅ チェック |
+
+8. **Close** をクリックして保存
+
+![iTerm2 Trigger設定例](iterm2-trigger-settings.png)
+
+#### 2. 通知権限の確認
+
+macOSのシステム設定で、iTerm2の通知が許可されていることを確認：
+
+1. **システム設定 > 通知** を開く
+2. **iTerm2** を選択
+3. **通知を許可** がオンになっていることを確認
+4. 通知スタイルを **バナー** または **通知** に設定
 
 ## 使い方
 
