@@ -2,11 +2,11 @@
   "hooks": {
     "Notification": [
       {
-        "matcher": "idle_prompt",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "~/.local/bin/claude-complete-notify.sh"
+            "command": "~/.local/bin/claude-notification-dynamic.sh"
           }
         ]
       }

@@ -102,15 +102,18 @@ iTerm2とtmuxでアイドル状態を検出し、macOS通知を送信するシ�
 
 ```
 tmux-idle-notification/
-├── README.md                          # このファイル
-├── tmux-idle-check.sh                 # アイドル監視メインスクリプト
-└── tmux-idle-check-launcher.sh        # ランチャースクリプト
+├── README.md                           # このファイル
+├── tmux-idle-check.sh                  # アイドル監視メインスクリプト
+├── tmux-idle-check-launcher.sh         # ランチャースクリプト
+├── claude-notification-dynamic.sh      # Claude Code動的通知スクリプト（推奨）
+└── claude-complete-notify.sh           # Claude Code通知スクリプト（レガシー）
 
 ~/.local/bin/
-└── claude-complete-notify.sh          # Claude Code hook用スクリプト
+├── claude-notification-dynamic.sh      # 通知タイプに応じたメッセージを表示
+└── claude-complete-notify.sh           # 固定メッセージ（後方互換性のため）
 
 ~/.claude/
-└── settings.json                       # Claude Code設定ファイル
+└── settings.json                        # Claude Code設定ファイル
 ```
 
 ## クイックスタート
@@ -122,8 +125,8 @@ cd claude-tmux-idle-notification-hook
 
 # スクリプトをインストール
 mkdir -p ~/.local/bin
-cp tmux-idle-check.sh tmux-idle-check-launcher.sh claude-complete-notify.sh ~/.local/bin/
-chmod +x ~/.local/bin/{tmux-idle-check.sh,tmux-idle-check-launcher.sh,claude-complete-notify.sh}
+cp tmux-idle-check.sh tmux-idle-check-launcher.sh claude-notification-dynamic.sh ~/.local/bin/
+chmod +x ~/.local/bin/{tmux-idle-check.sh,tmux-idle-check-launcher.sh,claude-notification-dynamic.sh}
 
 # Claude Code設定をマージ
 cat claude-settings-example.json >> ~/.claude/settings.json
@@ -144,6 +147,7 @@ tmux source-file ~/.tmux.conf
 - macOS
 - iTerm2（通知機能に必要）
 - tmux
+- jq（JSON解析用 - `brew install jq`）
 - Claude Code（Claude Code通知機能を使う場合）
 
 ### インストール
@@ -165,8 +169,8 @@ cp tmux-idle-check-launcher.sh ~/.local/bin/
 
 ```bash
 # スクリプトを~/.local/binに配置
-chmod +x claude-complete-notify.sh
-cp claude-complete-notify.sh ~/.local/bin/
+chmod +x claude-notification-dynamic.sh
+cp claude-notification-dynamic.sh ~/.local/bin/
 
 # Claude Code設定にhookを追加
 # ~/.claude/settings.jsonに以下を追加：
@@ -177,11 +181,11 @@ cp claude-complete-notify.sh ~/.local/bin/
   "hooks": {
     "Notification": [
       {
-        "matcher": "idle_prompt",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "/home/sugimoto/.local/bin/claude-complete-notify.sh"
+            "command": "~/.local/bin/claude-notification-dynamic.sh"
           }
         ]
       }
@@ -206,14 +210,16 @@ cp claude-complete-notify.sh ~/.local/bin/
 
 | 項目 | 設定値 |
 |------|--------|
-| Regular Expression | `^TMUX_IDLE_NOTIFICATION:` |
+| Regular Expression | `^TMUX_IDLE_NOTIFICATION: (.*)$` |
 | Name | `tmux idle notification` |
 | Action | `Post Notification...` |
-| Parameters | `tmux has been idle` (または任意のメッセージ) |
+| Parameters | `\1` |
 | Instant | ✅ チェック |
 | Enabled | ✅ チェック |
 
 8. **Close** をクリックして保存
+
+**重要**: `Parameters` の `\1` は正規表現のキャプチャグループを参照します。これにより、コロンの後のメッセージ内容が通知に表示されます。
 
 ![iTerm2 Trigger設定例](iterm2-trigger-settings.png)
 
@@ -266,11 +272,17 @@ Claude Codeで作業を完了後、60秒間何も入力しないと自動的に�
 #### 手動テスト
 
 ```bash
-# tmux内で実行
-/home/sugimoto/.local/bin/claude-complete-notify.sh
+# テスト1: idle_prompt（タスク完了）
+tmux display-message "TMUX_IDLE_NOTIFICATION: Task completed - ready for input"
+
+# テスト2: permission_prompt（応答必要）
+tmux display-message "TMUX_IDLE_NOTIFICATION: Your response needed"
+
+# または、スクリプトに直接JSONを渡してテスト
+echo '{"notification_type":"idle_prompt"}' | ~/.local/bin/claude-notification-dynamic.sh
 ```
 
-macOS通知が表示されれば正常に動作しています。
+Mac側で対応するメッセージの通知が表示されれば正常に動作しています。
 
 ## スクリプト詳細
 
@@ -300,19 +312,47 @@ tmuxセッションの最終アクティビティを監視するメインスク�
 2. 起動していなければ`nohup`で独立プロセスとして起動
 3. `disown`でシェルから切り離し
 
-### claude-complete-notify.sh
+### claude-notification-dynamic.sh（推奨）
 
-Claude Code hook用の通知スクリプト。
+Claude Code hook用の動的通知スクリプト。通知タイプに応じて異なるメッセージを表示します。
+
+**機能:**
+
+- Claude Code hookからJSON形式の入力を受け取る
+- `notification_type`フィールドを解析してメッセージをカスタマイズ
+- 通知タイプごとに適切なメッセージを生成
+
+**通知タイプとメッセージ:**
+
+| 通知タイプ | 表示メッセージ | 発火条件 |
+|-----------|--------------|---------|
+| `idle_prompt` | `Task completed - ready for input` | Claude Codeがタスク完了後アイドル状態 |
+| `permission_prompt` | `Your response needed` | 質問待ち・権限確認が必要 |
 
 **動作:**
 
-- tmux環境内: 現在のペインに`TMUX_IDLE_NOTIFICATION:`を送信
-- tmux外: `echo`で出力（現在は通知されない）
+- tmux環境内: `jq`でJSONを解析し、カスタムメッセージを送信
+- tmux外: デフォルトメッセージを出力
+
+**依存関係:**
+
+- `jq`: JSON解析に必要（`brew install jq`）
+
+### claude-complete-notify.sh（レガシー）
+
+Claude Code hook用の固定メッセージ通知スクリプト。後方互換性のために残されています。
+
+**動作:**
+
+- tmux環境内: 現在のペインに`TMUX_IDLE_NOTIFICATION: Claude Code task completed`を送信
+- tmux外: `echo`で出力
 
 **環境検出:**
 
 - `$TMUX`環境変数の有無でtmux環境を判定
 - 現在のペインIDを自動取得
+
+**注意:** 新規インストールでは`claude-notification-dynamic.sh`の使用を推奨します。
 
 ## 通知の仕組み
 
@@ -329,6 +369,17 @@ tmux display-message -t $PANE_ID "TMUX_IDLE_NOTIFICATION: Session idle for 1 min
 ↓
 
 macOS通知センターに「Session idle for 1 minutes」が表示される
+
+## 実装ノート
+
+### Claude Code Notificationイベントについて
+
+`claude-notification-dynamic.sh` は以下の通知タイプに対応しています：
+
+- **`idle_prompt`**: アイドル状態でユーザー入力待ち → "Task completed - ready for input"
+- **`permission_prompt`**: 権限確認や質問待ち → "Your response needed"
+
+ワイルドカードマッチャー（`*`）を使用しているため、将来的に新しい通知タイプが追加された場合でも、スクリプトのcase文を編集するだけで対応できます。
 
 ## トラブルシューティング
 
@@ -377,14 +428,24 @@ cat ~/.claude/settings.json
 
 ```bash
 # 実行権限を付与
-chmod +x ~/.local/bin/claude-complete-notify.sh
+chmod +x ~/.local/bin/claude-notification-dynamic.sh
 ```
 
 **原因3: スクリプトパスが間違っている**
 
 ```bash
 # パスを確認
-ls -la ~/.local/bin/claude-complete-notify.sh
+ls -la ~/.local/bin/claude-notification-dynamic.sh
+```
+
+**原因4: jqがインストールされていない**
+
+```bash
+# jqをインストール
+brew install jq
+
+# インストール確認
+which jq
 ```
 
 ## カスタマイズ
@@ -400,7 +461,24 @@ IDLE_THRESHOLD=120
 
 ### 通知メッセージを変更
 
-各スクリプトの`tmux display-message`コマンドのメッセージ部分を編集：
+`claude-notification-dynamic.sh`の`case`文でメッセージをカスタマイズ：
+
+```bash
+# 例: 日本語メッセージに変更
+case "$NOTIFICATION_TYPE" in
+  "idle_prompt")
+    CUSTOM_MSG="タスク完了 - 入力待ち"
+    ;;
+  "permission_prompt")
+    CUSTOM_MSG="応答が必要です"
+    ;;
+  *)
+    CUSTOM_MSG="$MESSAGE"
+    ;;
+esac
+```
+
+または、`tmux-idle-check.sh`の通知メッセージ部分を直接編集：
 
 ```bash
 # 例:
